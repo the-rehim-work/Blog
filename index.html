@@ -41,6 +41,7 @@
       height: 100%;
       background-color: #1db954;
       border-radius: 5px;
+      width: 0%;
     }
     #login-btn {
       background: #1db954;
@@ -76,17 +77,18 @@
 
   <script>
     const clientId = "a1341447fc7344de8fbe180b2f1f3b89";
-    const redirectUri = "https://the-rehim-work.github.io/Blog/";
+    const redirectUri = "https://the-rehim-work.github.io/Blog/"; // must match in Spotify dashboard
     const scopes = "user-read-playback-state user-read-currently-playing";
-
-    // Parse token if it exists
-    const urlParams = new URLSearchParams(window.location.hash.substring(1));
-    const accessToken = urlParams.get("access_token");
 
     const loginBtn = document.getElementById("login-btn");
     const trackInfo = document.getElementById("track-info");
 
+    // Extract access_token from hash fragment
+    const urlParams = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = urlParams.get("access_token");
+
     if (!accessToken) {
+      // No token -> show login button
       loginBtn.style.display = "inline-block";
       trackInfo.style.display = "none";
       loginBtn.addEventListener("click", () => {
@@ -94,36 +96,49 @@
         window.location.href = authUrl;
       });
     } else {
+      // Hide login button and show track info
       loginBtn.style.display = "none";
       trackInfo.style.display = "flex";
 
-      fetch("https://api.spotify.com/v1/me/player/currently-playing", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      })
-        .then((response) => response.json())
-        .then((data) => {
+      async function fetchNowPlaying() {
+        try {
+          const response = await fetch("https://api.spotify.com/v1/me/player/currently-playing", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+
+          if (response.status === 204 || response.status > 400) {
+            document.getElementById("track-name").textContent = "No track is currently playing.";
+            document.getElementById("artist-name").textContent = "";
+            document.getElementById("album-name").textContent = "";
+            document.getElementById("track-duration").textContent = "";
+            document.getElementById("album-art").src = "";
+            document.getElementById("progress").style.width = "0%";
+            return;
+          }
+
+          const data = await response.json();
           if (data && data.item) {
             const track = data.item;
             const progress = data.progress_ms || 0;
             const duration = track.duration_ms || 1;
 
             document.getElementById("track-name").textContent = track.name;
-            document.getElementById("artist-name").textContent = track.artists.map((artist) => artist.name).join(", ");
+            document.getElementById("artist-name").textContent = track.artists.map(a => a.name).join(", ");
             document.getElementById("album-name").textContent = track.album.name;
-            document.getElementById("track-duration").textContent = `${Math.floor(duration / 60000)}:${String(Math.floor((duration % 60000) / 1000)).padStart(2, "0")}`;
+            document.getElementById("track-duration").textContent =
+              `${Math.floor(duration / 60000)}:${String(Math.floor((duration % 60000) / 1000)).padStart(2, "0")}`;
             document.getElementById("album-art").src = track.album.images[0].url;
 
-            const progressBar = document.getElementById("progress");
-            progressBar.style.width = `${(progress / duration) * 100}%`;
-          } else {
-            document.getElementById("track-name").textContent = "No track is currently playing.";
+            document.getElementById("progress").style.width = `${(progress / duration) * 100}%`;
           }
-        })
-        .catch((error) => {
+        } catch (error) {
           console.error("Error fetching currently playing track:", error);
-        });
+        }
+      }
+
+      // Fetch immediately + every 5 seconds
+      fetchNowPlaying();
+      setInterval(fetchNowPlaying, 5000);
     }
   </script>
 </body>
